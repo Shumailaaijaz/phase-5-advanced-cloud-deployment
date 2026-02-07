@@ -1,0 +1,88 @@
+# values-aks.yaml — Azure Kubernetes Service (AKS) fallback
+# Usage: helm upgrade --install todo-app charts/todo-app -f charts/todo-app/values-aks.yaml
+# AKS differences from OKE: Azure-specific ingress class, ACR image registry, managed identity
+
+global:
+  namespace: todo-app
+
+frontend:
+  replicaCount: 1
+  image:
+    # Override with your ACR registry
+    repository: <acr-name>.azurecr.io/todo-frontend
+    tag: latest
+    pullPolicy: Always
+
+backend:
+  replicaCount: 1
+  image:
+    repository: <acr-name>.azurecr.io/todo-backend
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  # AKS supports HPA natively
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+dapr:
+  enabled: true
+  appId: todo-backend
+  appPort: 8000
+
+kafka:
+  # Point to Redpanda Cloud Serverless or Azure Event Hubs (Kafka-compatible)
+  brokers: ""  # Set via --set kafka.brokers=<bootstrap-server>
+  authType: "password"
+  brokersFromSecret: true
+
+consumers:
+  recurring:
+    enabled: true
+    replicaCount: 1
+  notification:
+    enabled: true
+    replicaCount: 1
+  audit:
+    enabled: true
+    replicaCount: 1
+
+ingress:
+  enabled: true
+  # AKS uses Azure Application Gateway or NGINX ingress
+  className: azure/application-gateway  # Or "nginx" if using NGINX ingress controller
+  annotations:
+    kubernetes.io/ingress.class: azure/application-gateway
+    appgw.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: todo.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
+  tls:
+    - secretName: todo-tls
+      hosts:
+        - todo.example.com
+
+# AKS-specific: Image pull secret for ACR
+imagePullSecrets:
+  - name: acr-secret
+
+# AKS node selectors (use default node pool)
+nodeSelector:
+  kubernetes.io/os: linux
+
+monitoring:
+  enabled: true

@@ -83,6 +83,12 @@ consumers:
   recurring:
     enabled: false
     replicaCount: 1
+  notification:
+    enabled: false
+    replicaCount: 1
+  audit:
+    enabled: false
+    replicaCount: 1
 
 ingress:
   enabled: false
@@ -97,3 +103,6 @@ ingress:
           pathType: Prefix
           service: backend
   tls: []
+
+monitoring:
+  enabled: false

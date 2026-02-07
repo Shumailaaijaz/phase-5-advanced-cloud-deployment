@@ -47,6 +47,15 @@ consumers:
   recurring:
     enabled: true
     replicaCount: 1
+  notification:
+    enabled: true
+    replicaCount: 1
+  audit:
+    enabled: true
+    replicaCount: 1
+
+monitoring:
+  enabled: true
 
 ingress:
   enabled: true

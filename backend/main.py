@@ -69,6 +69,20 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         content={"error": codes.get(exc.status_code, "unknown_error")}
     )
 
+@app.post("/reminder-cron")
+async def reminder_cron(request: Request):
+    """Dapr cron binding input route — invoked every minute by reminder-cron binding.
+    Delegates to the existing check_reminders logic."""
+    from database.session import get_session
+    session = next(get_session())
+    try:
+        from api.tasks import check_reminders as _check_reminders
+        result = await _check_reminders(session=session)
+        return result
+    finally:
+        session.close()
+
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Todo API"}

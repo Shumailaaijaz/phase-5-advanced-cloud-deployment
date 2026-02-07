@@ -6,7 +6,6 @@ import Image from "next/image";
 import { toast } from "sonner";
 import { onTaskUpdated } from "@/lib/events/taskEvents";
 import { Task, PRIORITIES, RECURRENCE_OPTIONS, getPriorityColor, getPriorityLabel, prioritySortOrder } from "@/types/task";
-import Image from "next/image";
 import {
   Trash2, CheckCircle2, Circle, Search, ClipboardList,
   Pencil, Calendar, Plus, Sparkles, TrendingUp,

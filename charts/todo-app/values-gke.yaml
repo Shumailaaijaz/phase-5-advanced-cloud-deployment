@@ -1,0 +1,89 @@
+# values-gke.yaml — Google Kubernetes Engine (GKE) fallback
+# Usage: helm upgrade --install todo-app charts/todo-app -f charts/todo-app/values-gke.yaml
+# GKE differences from OKE: GCE ingress class, GCR/Artifact Registry, Workload Identity
+
+global:
+  namespace: todo-app
+
+frontend:
+  replicaCount: 1
+  image:
+    # Override with your GCR/Artifact Registry
+    repository: gcr.io/<project-id>/todo-frontend
+    tag: latest
+    pullPolicy: Always
+
+backend:
+  replicaCount: 1
+  image:
+    repository: gcr.io/<project-id>/todo-backend
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  # GKE supports HPA natively
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+dapr:
+  enabled: true
+  appId: todo-backend
+  appPort: 8000
+
+kafka:
+  # Point to Redpanda Cloud Serverless or self-hosted Kafka on GKE
+  brokers: ""  # Set via --set kafka.brokers=<bootstrap-server>
+  authType: "password"
+  brokersFromSecret: true
+
+consumers:
+  recurring:
+    enabled: true
+    replicaCount: 1
+  notification:
+    enabled: true
+    replicaCount: 1
+  audit:
+    enabled: true
+    replicaCount: 1
+
+ingress:
+  enabled: true
+  # GKE uses GCE ingress by default
+  className: gce  # Or "nginx" if using NGINX ingress controller
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: todo-ip
+    networking.gke.io/managed-certificates: todo-cert
+  hosts:
+    - host: todo.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
+  tls:
+    - secretName: todo-tls
+      hosts:
+        - todo.example.com
+
+# GKE-specific: Use Workload Identity for authentication
+# No imagePullSecrets needed with Workload Identity + GCR
+
+# GKE node selectors (use default pool with e2-medium)
+nodeSelector:
+  kubernetes.io/os: linux
+  cloud.google.com/gke-nodepool: default-pool
+
+monitoring:
+  enabled: true

@@ -1,0 +1,84 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "todo-app.fullname" . }}-grafana-dashboard
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "todo-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitoring
+    grafana_dashboard: "1"
+data:
+  todo-app-dashboard.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "title": "API Request Rate",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(rate(http_requests_total{job=\"todo-backend\"}[5m])) by (status)",
+              "legendFormat": "Status {{ "{{status}}" }}"
+            }
+          ]
+        },
+        {
+          "title": "API Latency (p95)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"todo-backend\"}[5m])) by (le))",
+              "legendFormat": "p95 latency"
+            }
+          ]
+        },
+        {
+          "title": "Kafka Consumer Lag",
+          "type": "stat",
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+          "targets": [
+            {
+              "expr": "kafka_consumer_group_lag{group=~\"todo-.*\"}",
+              "legendFormat": "{{ "{{group}}" }} / {{ "{{topic}}" }}"
+            }
+          ]
+        },
+        {
+          "title": "Pod Restarts",
+          "type": "stat",
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+          "targets": [
+            {
+              "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"todo-app\"}[1h])",
+              "legendFormat": "{{ "{{pod}}" }}"
+            }
+          ]
+        },
+        {
+          "title": "Events Processed",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+          "targets": [
+            {
+              "expr": "sum(rate(events_processed_total{job=~\"todo-consumer-.*\"}[5m])) by (job)",
+              "legendFormat": "{{ "{{job}}" }}"
+            }
+          ]
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["todo-app", "phase-v"],
+      "templating": { "list": [] },
+      "time": { "from": "now-1h", "to": "now" },
+      "title": "Todo App - Phase V Dashboard",
+      "uid": "todo-app-phase-v"
+    }
+{{- end }}
