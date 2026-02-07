@@ -1,6 +1,8 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+import json
+import logging
 from sqlmodel import SQLModel, select # SQLModel zaroori hai tables banane ke liye
 from database.session import engine
 from core.config import settings
@@ -81,6 +83,43 @@ async def reminder_cron(request: Request):
         return result
     finally:
         session.close()
+
+
+# --- WEBSOCKET: Real-time task sync ---
+ws_connections: dict[int, list[WebSocket]] = {}
+ws_logger = logging.getLogger("websocket")
+
+
+@app.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: int):
+    """Real-time sync: clients connect here to receive live task updates."""
+    await websocket.accept()
+    if user_id not in ws_connections:
+        ws_connections[user_id] = []
+    ws_connections[user_id].append(websocket)
+    ws_logger.info(f"WebSocket connected: user_id={user_id}")
+    try:
+        while True:
+            await websocket.receive_text()  # Keep connection alive
+    except WebSocketDisconnect:
+        ws_connections[user_id].remove(websocket)
+        if not ws_connections[user_id]:
+            del ws_connections[user_id]
+        ws_logger.info(f"WebSocket disconnected: user_id={user_id}")
+
+
+async def broadcast_task_event(user_id: int, event_type: str, data: dict):
+    """Broadcast a task event to all connected WebSocket clients for a user."""
+    if user_id in ws_connections:
+        message = json.dumps({"event_type": event_type, "data": data})
+        dead = []
+        for ws in ws_connections[user_id]:
+            try:
+                await ws.send_text(message)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            ws_connections[user_id].remove(ws)
 
 
 @app.get("/")

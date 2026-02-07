@@ -50,8 +50,8 @@ User -> NGINX Ingress -> Frontend (Next.js) -> Backend (FastAPI)
                                         |
                               +---------+---------+
                               |                   |
-                        Recurring Task      Notification
-                          Consumer            Service
+                        Recurring Task      Notification     Audit
+                          Consumer            Consumer       Logger
 ```
 
 See [spec.md](specs/001-advanced-cloud-deployment/spec.md) for the full mermaid architecture diagram.
@@ -111,15 +111,18 @@ helm upgrade --install todo-app charts/todo-app \
 backend/
   alembic/versions/     004-009 migrations (priority, tags, search, dates, recurrence, reminders)
   events/               Event emitter + transport abstraction (Dapr/Kafka)
-  consumers/            Recurring task consumer (Dapr subscription)
+  consumers/            Recurring, Notification, Audit consumers (Dapr subscriptions)
   models/               SQLModel Task + Tag + TaskTag
   mcp/                  MCP tools with search/filter/sort/pagination
 charts/todo-app/
   templates/dapr/       Dapr component YAMLs (pubsub, statestore, cron, secrets)
-  templates/            Deployments, services, consumer, ingress
+  templates/monitoring/ Prometheus alerts + Grafana dashboard ConfigMap
+  templates/            Deployments, services, 3 consumers, ingress
   values.yaml           Base values
   values-local.yaml     Minikube + Dapr + Strimzi Kafka
-  values-cloud.yaml     OKE/AKS/GKE + Redpanda + TLS
+  values-cloud.yaml     OKE + Redpanda + TLS
+  values-aks.yaml       Azure AKS fallback
+  values-gke.yaml       Google GKE fallback
 scripts/
   deploy-local.sh       Minikube full-stack deployment
   teardown-local.sh     Clean teardown
@@ -151,13 +154,42 @@ specs/
 - **Phase IV**: Docker + Minikube + Helm charts + kubectl-ai + kagent
 - **Phase V**: Priorities, tags, search, recurrence, reminders, Kafka events, Dapr sidecars, CI/CD, cloud deployment
 
-Next Steps / Future Ideas
+## Consumer Microservices
 
-Full WebSocket + Kafka consumer for real-time UI
-Email/SMS notifications via Twilio or SendGrid binding
-Multi-cloud Helm variants (AKS/GKE)
-Advanced monitoring (alerts, SLOs)
-Load testing with Locust
+| Consumer | Topic | Purpose | Port |
+|----------|-------|---------|------|
+| **Recurring** | `task-events` | Auto-creates next task occurrence on completion | 8001 |
+| **Notification** | `reminders` | Processes reminder.due events, marks reminder_sent | 8002 |
+| **Audit Logger** | `task-events` | Structured JSON logging of all events (Loki-compatible) | 8003 |
+
+## Real-time Sync
+
+WebSocket endpoint at `/ws/{user_id}` broadcasts task events to connected clients for live dashboard updates.
+
+## Monitoring
+
+- **Prometheus**: 4 alert rules (API error rate, latency, Kafka lag, pod restarts)
+- **Grafana**: Pre-configured dashboard with API metrics, consumer lag, pod health panels
+
+## Cloud Fallbacks
+
+| Provider | Values File | Notes |
+|----------|-------------|-------|
+| Oracle OKE (primary) | `values-cloud.yaml` | Always-free, 4 OCPUs, 24GB RAM |
+| Azure AKS | `values-aks.yaml` | Application Gateway ingress, ACR registry |
+| Google GKE | `values-gke.yaml` | GCE ingress, Workload Identity |
+
+## Tests
+
+- **Phase V Unit Tests**: 25 tests covering priorities, tags, search, recurrence, reminders, event schemas
+- Run: `cd backend && pytest tests/test_phase_v.py -v`
+
+## Next Steps / Future Ideas
+
+- Email/SMS notifications via Twilio or SendGrid Dapr binding
+- Advanced monitoring with SLOs and error budgets
+- Load testing with Locust
+- Multi-user task sharing
 
 
 Made with ❤️ in Karachi, Pakistan
