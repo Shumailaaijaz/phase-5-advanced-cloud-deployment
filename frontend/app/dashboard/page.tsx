@@ -6,9 +6,10 @@ import Image from "next/image";
 import { toast } from "sonner";
 import { onTaskUpdated } from "@/lib/events/taskEvents";
 import { Task, PRIORITIES, RECURRENCE_OPTIONS, getPriorityColor, getPriorityLabel, prioritySortOrder } from "@/types/task";
+import Image from "next/image";
 import {
   Trash2, CheckCircle2, Circle, Search, ClipboardList,
-  Pencil, Calendar, Plus, Sparkles, Target, TrendingUp,
+  Pencil, Calendar, Plus, Sparkles, TrendingUp,
   Tag, Repeat, Bell, X
 } from "lucide-react";
 
@@ -157,13 +158,15 @@ export default function Dashboard() {
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-200">
-                <Target size={20} className="text-white" />
+              <div className="relative w-[140px] h-[45px] drop-shadow-lg">
+                <Image
+                  src="/logoh2p2.jpeg"
+                  alt="evoToDo Logo"
+                  fill
+                  className="object-contain rounded-xl"
+                />
               </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Today&apos;s Mission</h1>
-                <p className="text-gray-500 font-medium">Phase V: Priorities, Tags, Recurrence, Reminders</p>
-              </div>
+              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Today&apos;s Mission</h1>
             </div>
           </div>
 
