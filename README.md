@@ -2,6 +2,25 @@
 
 A production-grade Todo AI Chatbot with priority levels, tags, due dates, recurring tasks, and reminders. All wired through Kafka events via Dapr sidecars, deployed on Minikube with CI/CD and cloud-ready Helm charts.
 
+Cloud-Native Todo AI Chatbot with Event-Driven Architecture
+Phase V Thumbnail
+https://youtu.be/-Z04jG9uzEg
+Project Overview
+Phase V completes the evolution of the Todo AI Chatbot into a production-grade, event-driven, cloud-native application.
+It builds on Phase III (AI chatbot with MCP tools) and Phase IV (local Minikube + Helm) by adding:
+
+Intermediate features: priorities, tags, search, filter, sort
+Advanced features: recurring tasks, due dates, reminders/notifications
+Full event-driven architecture with Kafka (Redpanda) topics: task-events, reminders, task-updates
+Dapr sidecar runtime for decoupling (Pub/Sub, State, Bindings/cron, Secrets, Service Invocation)
+Local deployment on Minikube with Dapr + Redpanda
+Production deployment on Oracle Cloud Always Free OKE (4 OCPUs, 24 GB RAM)
+Basic CI/CD via GitHub Actions
+Monitoring & logging basics (Prometheus/Grafana or cloud-native)
+
+This phase demonstrates modern microservices, loose coupling, and scalability — turning a simple CRUD app into a resilient, real-time system.
+Technology Stack – Phase V
+LayerTechnologyPurposeFrontendNext.js 14+ (App Router) + ChatKitResponsive UI with natural language chatBackendFastAPI + SQLModel + UvicornCore API + MCP toolsAI FrameworkOpenAI Agents SDKChatbot reasoning & tool callingDatabaseNeon PostgreSQL (serverless)Persistent tasks & conversationsMessagingRedpanda Cloud Serverless (Kafka-comp.)Event-driven topics (task-events, reminders)Runtime AbstractionDapr sidecarPub/Sub, State, Cron bindings, SecretsLocal K8sMinikube + Docker driverTesting & development clusterCloud K8sOracle Cloud Always Free OKEProduction-grade deploymentPackagingHelm v3/v4Application deployment manifestsCI/CDGitHub ActionsBuild → test → deploy pipelineMonitoringPrometheus + Grafana (basic)Cluster & app metrics
 ## Features
 
 | Feature | Description |
@@ -131,3 +150,17 @@ specs/
 - **Phase III**: Backend + MCP tools + AI chatbot + conversation persistence
 - **Phase IV**: Docker + Minikube + Helm charts + kubectl-ai + kagent
 - **Phase V**: Priorities, tags, search, recurrence, reminders, Kafka events, Dapr sidecars, CI/CD, cloud deployment
+
+Next Steps / Future Ideas
+
+Full WebSocket + Kafka consumer for real-time UI
+Email/SMS notifications via Twilio or SendGrid binding
+Multi-cloud Helm variants (AKS/GKE)
+Advanced monitoring (alerts, SLOs)
+Load testing with Locust
+
+
+Made with ❤️ in Karachi, Pakistan
+Shumaila – February 2026
+Hackathon II – Evolution of Todo – Phase V Submission
+
