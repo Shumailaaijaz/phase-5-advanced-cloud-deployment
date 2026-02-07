@@ -11,6 +11,7 @@ from sqlmodel import Session
 from mcp.schemas.params import DeleteTaskParams
 from mcp.schemas.responses import ToolResponse, DeleteTaskData
 from mcp.crud.task import get_task_by_id_and_user, delete_task as crud_delete
+from events.emitter import emit_event
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,11 @@ def delete_task(params: dict, get_session: Callable[[], Session], user_id_int: i
                 details={"task_id": validated.task_id}
             )
 
+        task_title = task.title
         crud_delete(session, task)
+
+        # Emit event AFTER commit
+        emit_event("task.deleted", user_id_int, task_id, {"title": task_title})
 
         result = DeleteTaskData(deleted=True, task_id=validated.task_id)
         logger.info(f"delete_task success: task_id={validated.task_id}")

@@ -69,6 +69,21 @@ backend:
     openaiModel: gpt-4o-mini
     groqModel: llama-3.3-70b-versatile
 
+dapr:
+  enabled: false
+  appId: todo-backend
+  appPort: 8000
+
+kafka:
+  brokers: "kafka-cluster-kafka-bootstrap.kafka:9092"
+  authType: "none"
+  brokersFromSecret: false
+
+consumers:
+  recurring:
+    enabled: false
+    replicaCount: 1
+
 ingress:
   enabled: false
   className: nginx

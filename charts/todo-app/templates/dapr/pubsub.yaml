@@ -1,0 +1,35 @@
+{{- if .Values.dapr.enabled }}
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: task-pubsub
+  namespace: {{ .Values.global.namespace }}
+spec:
+  type: pubsub.kafka
+  version: v1
+  metadata:
+    - name: brokers
+      {{- if .Values.kafka.brokersFromSecret }}
+      secretKeyRef:
+        name: kafka-secrets
+        key: brokers
+      {{- else }}
+      value: "{{ .Values.kafka.brokers }}"
+      {{- end }}
+    - name: authType
+      value: "{{ .Values.kafka.authType }}"
+    {{- if eq .Values.kafka.authType "password" }}
+    - name: saslUsername
+      secretKeyRef:
+        name: kafka-secrets
+        key: username
+    - name: saslPassword
+      secretKeyRef:
+        name: kafka-secrets
+        key: password
+    {{- end }}
+    - name: consumerGroup
+      value: "todo-app"
+    - name: maxMessageBytes
+      value: "1048576"
+{{- end }}

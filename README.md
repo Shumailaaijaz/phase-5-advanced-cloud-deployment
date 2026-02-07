@@ -1,1 +1,133 @@
-"# phase-5-advanced-cloud-deployment" 
+# Todo AI Chatbot — Phase V: Advanced Cloud Deployment
+
+A production-grade Todo AI Chatbot with priority levels, tags, due dates, recurring tasks, and reminders. All wired through Kafka events via Dapr sidecars, deployed on Minikube with CI/CD and cloud-ready Helm charts.
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Priorities (P1-P4)** | 4-level priority system: P1 (Critical), P2 (High), P3 (Medium), P4 (Low) |
+| **Tags** | Free-form tags, many-to-many with tasks, per-user isolation, max 10 per task |
+| **Full-Text Search** | PostgreSQL TSVECTOR + GIN index for fast natural language search |
+| **Due Dates** | TIMESTAMPTZ with range filtering (due_before, due_after) |
+| **Recurring Tasks** | Daily, weekly, monthly recurrence with auto-creation on completion |
+| **Reminders** | Configurable minutes-before-due reminder with cron-triggered checks |
+| **Search/Filter/Sort** | Combined search + priority/tag/completion/date filters + sort + pagination |
+| **Event-Driven** | All CRUD operations emit domain events to Kafka via Dapr Pub/Sub |
+| **Dapr Sidecars** | App talks to localhost:3500 — infrastructure swappable via YAML |
+| **Dual Transport** | USE_DAPR toggle switches between Dapr HTTP and direct aiokafka |
+
+## Architecture
+
+```
+User -> NGINX Ingress -> Frontend (Next.js) -> Backend (FastAPI)
+                                                    |
+                                              Dapr Sidecar (localhost:3500)
+                                                    |
+                                        +-----------+-----------+
+                                        |           |           |
+                                    Pub/Sub     State Store   Secrets
+                                   (Kafka)    (PostgreSQL)   (K8s)
+                                        |
+                              +---------+---------+
+                              |                   |
+                        Recurring Task      Notification
+                          Consumer            Service
+```
+
+See [spec.md](specs/001-advanced-cloud-deployment/spec.md) for the full mermaid architecture diagram.
+
+## Quick Start
+
+### Local Development (No K8s)
+
+```bash
+cd backend
+pip install -r requirements.txt
+alembic upgrade head
+USE_DAPR=false python -m uvicorn main:app --reload
+```
+
+### Minikube with Dapr + Kafka
+
+```bash
+# One command deploys everything
+bash scripts/deploy-local.sh
+
+# Access the app
+minikube service todo-frontend -n todo-app
+
+# Clean up
+bash scripts/teardown-local.sh
+```
+
+### Cloud (Oracle OKE)
+
+```bash
+helm upgrade --install todo-app charts/todo-app \
+  -f charts/todo-app/values-cloud.yaml \
+  --set backend.secrets.databaseUrl="$DATABASE_URL" \
+  --set backend.secrets.openaiApiKey="$OPENAI_API_KEY" \
+  --namespace todo-app --create-namespace --atomic
+```
+
+## Demo Flow (for judges)
+
+1. **Create a task with priority + tags + recurrence**:
+   > "Add a P1 task called 'Weekly team standup' tagged 'work' and 'meetings' that recurs weekly with a 30-minute reminder"
+
+2. **Search and filter**:
+   > "Show me all P1 tasks tagged 'work' sorted by due date"
+
+3. **Complete the recurring task**:
+   > "Mark 'Weekly team standup' as complete"
+
+4. **See the magic** — the recurring task consumer auto-creates the next occurrence with the due date advanced by 1 week
+
+5. **Verify events**: Check Kafka topic `task-events` for the `task.completed` and `task.created` events
+
+## Project Structure
+
+```
+backend/
+  alembic/versions/     004-009 migrations (priority, tags, search, dates, recurrence, reminders)
+  events/               Event emitter + transport abstraction (Dapr/Kafka)
+  consumers/            Recurring task consumer (Dapr subscription)
+  models/               SQLModel Task + Tag + TaskTag
+  mcp/                  MCP tools with search/filter/sort/pagination
+charts/todo-app/
+  templates/dapr/       Dapr component YAMLs (pubsub, statestore, cron, secrets)
+  templates/            Deployments, services, consumer, ingress
+  values.yaml           Base values
+  values-local.yaml     Minikube + Dapr + Strimzi Kafka
+  values-cloud.yaml     OKE/AKS/GKE + Redpanda + TLS
+scripts/
+  deploy-local.sh       Minikube full-stack deployment
+  teardown-local.sh     Clean teardown
+.github/workflows/
+  deploy.yml            CI/CD: lint -> test -> build -> push -> deploy
+  rollback.yml          Manual rollback via Helm revision
+specs/
+  001-advanced-cloud-deployment/
+    spec.md             Full specification (14 sections)
+    plan.md             Implementation plan (7 milestones)
+    tasks.md            16-task fast-track plan
+    data-model.md       ER diagram + entity specs
+    contracts/          MCP tools, events, Dapr components
+```
+
+## Key Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | Neon PostgreSQL connection string |
+| `BETTER_AUTH_SECRET` | Yes | JWT signing secret |
+| `OPENAI_API_KEY` | Yes | OpenAI API key |
+| `USE_DAPR` | No | Toggle Dapr (true) vs direct Kafka (false) |
+| `KAFKA_BROKERS` | If USE_DAPR=false | Kafka bootstrap servers |
+
+## Phases
+
+- **Phase III**: Backend + MCP tools + AI chatbot + conversation persistence
+- **Phase IV**: Docker + Minikube + Helm charts + kubectl-ai + kagent
+- **Phase V**: Priorities, tags, search, recurrence, reminders, Kafka events, Dapr sidecars, CI/CD, cloud deployment

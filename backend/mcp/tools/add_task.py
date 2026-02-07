@@ -10,25 +10,16 @@ from sqlmodel import Session
 
 from mcp.schemas.params import AddTaskParams
 from mcp.schemas.responses import ToolResponse, TaskData
-from mcp.crud.task import create_task
+from mcp.crud.task import create_task, _get_tags_for_task
+from events.emitter import emit_event
 
 logger = logging.getLogger(__name__)
 
 
 def add_task(params: dict, get_session: Callable[[], Session], user_id_int: int) -> ToolResponse:
-    """Create a new task for the user.
-
-    Args:
-        params: Raw parameters dict from agent
-        get_session: Factory to create fresh DB session
-        user_id_int: Authenticated user ID (integer)
-
-    Returns:
-        ToolResponse with created TaskData or error
-    """
+    """Create a new task for the user."""
     logger.info(f"add_task invoked for user_id={user_id_int}")
 
-    # Validate parameters
     try:
         validated = AddTaskParams(**params)
     except ValidationError as e:
@@ -39,7 +30,7 @@ def add_task(params: dict, get_session: Callable[[], Session], user_id_int: int)
         if "priority" in str(field).lower() or "priority" in msg.lower():
             return ToolResponse.fail(
                 code="invalid_priority",
-                message="Priority must be one of: Low, Medium, High",
+                message="Priority must be one of: P1, P2, P3, P4",
                 details={"field": "priority", "value": params.get("priority")}
             )
         if "due_date" in str(field).lower() or "YYYY-MM-DD" in msg:
@@ -55,11 +46,20 @@ def add_task(params: dict, get_session: Callable[[], Session], user_id_int: int)
             details={"field": str(field)}
         )
 
-    # Create task in database
     try:
         session = get_session()
         task = create_task(session, user_id_int, validated)
-        task_data = TaskData.from_task(task, validated.user_id)
+        tags = _get_tags_for_task(session, task.id)
+        task_data = TaskData.from_task(task, validated.user_id, tags=tags)
+
+        # Emit event AFTER commit
+        emit_event("task.created", user_id_int, task.id, {
+            "title": task.title,
+            "priority": task.priority,
+            "tags": tags,
+            "recurrence_rule": task.recurrence_rule,
+        })
+
         logger.info(f"add_task success: task_id={task.id}")
         return ToolResponse.ok(task_data.model_dump())
     except Exception as e:

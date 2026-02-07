@@ -1,0 +1,66 @@
+# values-cloud.yaml — Cloud deployment (Oracle OKE / AKS / GKE)
+# Usage: helm upgrade --install todo-app charts/todo-app -f charts/todo-app/values-cloud.yaml
+
+global:
+  namespace: todo-app
+
+frontend:
+  replicaCount: 1
+  image:
+    # Override with your GHCR registry
+    repository: ghcr.io/shumaila/todo-frontend
+    tag: latest
+    pullPolicy: Always
+
+backend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/shumaila/todo-backend
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  # HPA config
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+dapr:
+  enabled: true
+  appId: todo-backend
+  appPort: 8000
+
+kafka:
+  # Point to Redpanda Cloud Serverless
+  brokers: ""  # Set via --set kafka.brokers=<redpanda-bootstrap>
+  authType: "password"
+  brokersFromSecret: true
+
+consumers:
+  recurring:
+    enabled: true
+    replicaCount: 1
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: todo.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
+  tls:
+    - secretName: todo-tls
+      hosts:
+        - todo.example.com

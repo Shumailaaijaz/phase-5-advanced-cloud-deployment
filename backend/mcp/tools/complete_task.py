@@ -12,6 +12,7 @@ from sqlmodel import Session
 from mcp.schemas.params import CompleteTaskParams
 from mcp.schemas.responses import ToolResponse
 from mcp.crud.task import get_task_by_id_and_user
+from events.emitter import emit_event
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,13 @@ def complete_task(params: dict, get_session: Callable[[], Session], user_id_int:
             session.add(task)
             session.commit()
             session.refresh(task)
+
+        # Emit event AFTER commit
+        emit_event("task.completed", user_id_int, task.id, {
+            "title": task.title,
+            "recurrence_rule": getattr(task, "recurrence_rule", None),
+            "recurrence_depth": getattr(task, "recurrence_depth", 0),
+        })
 
         result = {
             "id": task.id,

@@ -1,0 +1,44 @@
+# values-local.yaml — Minikube local deployment with Dapr + Kafka
+# Usage: helm upgrade --install todo-app charts/todo-app -f charts/todo-app/values-local.yaml
+
+global:
+  namespace: todo-app
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: todo-frontend
+    tag: local
+    pullPolicy: IfNotPresent
+
+backend:
+  replicaCount: 1
+  image:
+    repository: todo-backend
+    tag: local
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+dapr:
+  enabled: true
+  appId: todo-backend
+  appPort: 8000
+
+kafka:
+  brokers: "kafka-cluster-kafka-bootstrap.kafka:9092"
+  authType: "none"
+  brokersFromSecret: false
+
+consumers:
+  recurring:
+    enabled: true
+    replicaCount: 1
+
+ingress:
+  enabled: false

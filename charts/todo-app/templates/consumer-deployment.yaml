@@ -1,0 +1,78 @@
+{{- if .Values.consumers.recurring.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "todo-app.fullname" . }}-consumer-recurring
+  labels:
+    {{- include "todo-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: consumer-recurring
+spec:
+  replicas: {{ .Values.consumers.recurring.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "todo-app.name" . }}
+      app.kubernetes.io/component: consumer-recurring
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "todo-app.name" . }}
+        app.kubernetes.io/component: consumer-recurring
+      {{- if .Values.dapr.enabled }}
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "todo-consumer-recurring"
+        dapr.io/app-port: "8001"
+        dapr.io/enable-api-logging: "true"
+        dapr.io/log-level: "info"
+        dapr.io/sidecar-cpu-request: "50m"
+        dapr.io/sidecar-memory-request: "64Mi"
+        dapr.io/sidecar-cpu-limit: "200m"
+        dapr.io/sidecar-memory-limit: "128Mi"
+      {{- end }}
+    spec:
+      containers:
+        - name: consumer-recurring
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command: ["python", "-m", "consumers.recurring"]
+          ports:
+            - name: http
+              containerPort: 8001
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ include "todo-app.fullname" . }}-secrets
+            - configMapRef:
+                name: {{ include "todo-app.fullname" . }}-config
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "todo-app.fullname" . }}-consumer-recurring
+  labels:
+    {{- include "todo-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: consumer-recurring
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8001
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "todo-app.name" . }}
+    app.kubernetes.io/component: consumer-recurring
+{{- end }}

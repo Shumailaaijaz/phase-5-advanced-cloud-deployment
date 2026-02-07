@@ -28,10 +28,22 @@ class TaskData(BaseModel):
     due_date: Optional[str] = None
     created_at: str
     updated_at: str
+    tags: Optional[List[str]] = None
+    recurrence_rule: Optional[str] = None
+    recurrence_depth: int = 0
+    reminder_minutes: Optional[int] = None
+    reminder_sent: bool = False
 
     @classmethod
-    def from_task(cls, task: Any, user_id: str) -> "TaskData":
+    def from_task(cls, task: Any, user_id: str, tags: Optional[List[str]] = None) -> "TaskData":
         """Create TaskData from a Task model instance."""
+        due_str = None
+        if task.due_date is not None:
+            if isinstance(task.due_date, datetime):
+                due_str = task.due_date.isoformat() + "Z"
+            else:
+                due_str = str(task.due_date)
+
         return cls(
             id=task.id,
             user_id=user_id,
@@ -39,9 +51,14 @@ class TaskData(BaseModel):
             description=task.description,
             completed=task.completed,
             priority=task.priority,
-            due_date=task.due_date,
+            due_date=due_str,
             created_at=task.created_at.isoformat() + "Z" if isinstance(task.created_at, datetime) else str(task.created_at),
             updated_at=task.updated_at.isoformat() + "Z" if isinstance(task.updated_at, datetime) else str(task.updated_at),
+            tags=tags,
+            recurrence_rule=getattr(task, 'recurrence_rule', None),
+            recurrence_depth=getattr(task, 'recurrence_depth', 0),
+            reminder_minutes=getattr(task, 'reminder_minutes', None),
+            reminder_sent=getattr(task, 'reminder_sent', False),
         )
 
 
@@ -50,6 +67,9 @@ class ListTasksData(BaseModel):
 
     tasks: List[TaskData]
     total: int
+    page: int = 1
+    page_size: int = 20
+    total_pages: int = 1
 
 
 class DeleteTaskData(BaseModel):

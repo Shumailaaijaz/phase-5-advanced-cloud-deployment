@@ -1,0 +1,15 @@
+{{- if .Values.dapr.enabled }}
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: task-statestore
+  namespace: {{ .Values.global.namespace }}
+spec:
+  type: state.postgresql
+  version: v1
+  metadata:
+    - name: connectionString
+      secretKeyRef:
+        name: {{ include "todo-app.fullname" . }}-secrets
+        key: DATABASE_URL
+{{- end }}

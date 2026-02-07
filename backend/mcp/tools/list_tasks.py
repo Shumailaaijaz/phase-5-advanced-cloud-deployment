@@ -1,34 +1,25 @@
 """list_tasks MCP Tool
 
-Retrieves all tasks for a user.
+Retrieves tasks for a user with search, filtering, sorting, and pagination.
 """
 
 import logging
+import math
 from typing import Callable
 from pydantic import ValidationError
 from sqlmodel import Session
 
 from mcp.schemas.params import ListTasksParams
 from mcp.schemas.responses import ToolResponse, TaskData, ListTasksData
-from mcp.crud.task import get_tasks_for_user
+from mcp.crud.task import get_tasks_filtered, _get_tags_for_task
 
 logger = logging.getLogger(__name__)
 
 
 def list_tasks(params: dict, get_session: Callable[[], Session], user_id_int: int) -> ToolResponse:
-    """List all tasks for the user, ordered by creation time (newest first).
-
-    Args:
-        params: Raw parameters dict from agent
-        get_session: Factory to create fresh DB session
-        user_id_int: Authenticated user ID (integer)
-
-    Returns:
-        ToolResponse with ListTasksData or error
-    """
+    """List tasks with optional search, filters, sort, and pagination."""
     logger.info(f"list_tasks invoked for user_id={user_id_int}")
 
-    # Validate parameters
     try:
         validated = ListTasksParams(**params)
     except ValidationError as e:
@@ -39,18 +30,27 @@ def list_tasks(params: dict, get_session: Callable[[], Session], user_id_int: in
             details={"field": str(error.get("loc", ["unknown"])[0])}
         )
 
-    # Query tasks from database
     try:
         session = get_session()
-        tasks = get_tasks_for_user(session, user_id_int)
+        tasks, total_count = get_tasks_filtered(session, user_id_int, validated)
 
-        task_data_list = [
-            TaskData.from_task(task, validated.user_id)
-            for task in tasks
-        ]
+        page = validated.page or 1
+        page_size = validated.page_size or 20
+        total_pages = max(1, math.ceil(total_count / page_size))
 
-        result = ListTasksData(tasks=task_data_list, total=len(task_data_list))
-        logger.info(f"list_tasks success: count={result.total}")
+        task_data_list = []
+        for task in tasks:
+            tags = _get_tags_for_task(session, task.id)
+            task_data_list.append(TaskData.from_task(task, validated.user_id, tags=tags))
+
+        result = ListTasksData(
+            tasks=task_data_list,
+            total=total_count,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+        )
+        logger.info(f"list_tasks success: count={total_count}, page={page}/{total_pages}")
         return ToolResponse.ok(result.model_dump())
     except Exception as e:
         logger.error(f"list_tasks error: {e}")
