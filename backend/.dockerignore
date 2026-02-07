@@ -1,0 +1,17 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env*
+tests/
+*.md
+.git/
+.gitignore
+.pytest_cache/
+todo_test.db
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db
+alembic/versions/__pycache__/

@@ -1,0 +1,10 @@
+# .wslconfig — Copy to C:\Users\<username>\.wslconfig
+# Restart WSL after changes: wsl --shutdown (from PowerShell)
+#
+# These settings tune WSL2 for running Docker Desktop + Minikube
+# Adjust memory based on your host RAM (minimum 4GB recommended)
+
+[wsl2]
+memory=4GB
+processors=2
+swap=2GB

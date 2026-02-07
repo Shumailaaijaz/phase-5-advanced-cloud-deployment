@@ -1,0 +1,84 @@
+# Todo App Helm Chart - values.yaml
+# See specs/007-local-k8s-deployment/contracts/values-schema.md for full schema
+
+global:
+  namespace: todo-app
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: todo-frontend
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: NodePort
+    port: 3000
+    nodePort: 30080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  probes:
+    liveness:
+      path: /
+      initialDelaySeconds: 10
+      periodSeconds: 15
+    readiness:
+      path: /
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+backend:
+  replicaCount: 1
+  image:
+    repository: todo-backend
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  probes:
+    liveness:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 15
+    readiness:
+      path: /health
+      initialDelaySeconds: 5
+      periodSeconds: 10
+  # REQUIRED: Must be provided via --set at install time
+  secrets:
+    databaseUrl: ""      # REQUIRED: postgresql://user:pass@host/db
+    betterAuthSecret: "" # REQUIRED: JWT signing secret
+    openaiApiKey: ""     # REQUIRED: OpenAI API key
+    jwtSecret: ""        # REQUIRED: JWT secret
+    groqApiKey: ""       # Optional: Groq API key
+  config:
+    environment: production
+    corsOrigins: "*"
+    openaiModel: gpt-4o-mini
+    groqModel: llama-3.3-70b-versatile
+
+ingress:
+  enabled: false
+  className: nginx
+  hosts:
+    - host: todo.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend
+  tls: []

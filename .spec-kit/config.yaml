@@ -1,0 +1,17 @@
+# Spec-Kit Plus configuration (Phase II)
+# This file is required by .specify/memory/constitution.md.
+
+specs_root: specs
+
+defaults:
+  feature_folder: "specs/features"
+  api_folder: "specs/api"
+  database_folder: "specs/database"
+  ui_folder: "specs/ui"
+
+references:
+  prefix: "@specs"
+
+quality_gates:
+  require_constitution: true
+  require_specs_before_code: true

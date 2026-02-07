@@ -1,0 +1,23 @@
+"""Agent response templates module."""
+
+from agent.templates.confirmations import (
+    get_template,
+    TASK_CREATED_TEMPLATES,
+    TASK_LISTED_TEMPLATES,
+    TASK_COMPLETED_TEMPLATES,
+    TASK_DELETED_TEMPLATES,
+    TASK_UPDATED_TEMPLATES,
+    TASK_NOT_FOUND_TEMPLATES,
+    AMBIGUOUS_REQUEST_TEMPLATES,
+)
+
+__all__ = [
+    "get_template",
+    "TASK_CREATED_TEMPLATES",
+    "TASK_LISTED_TEMPLATES",
+    "TASK_COMPLETED_TEMPLATES",
+    "TASK_DELETED_TEMPLATES",
+    "TASK_UPDATED_TEMPLATES",
+    "TASK_NOT_FOUND_TEMPLATES",
+    "AMBIGUOUS_REQUEST_TEMPLATES",
+]

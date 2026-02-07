@@ -1,0 +1,23 @@
+"use client";
+
+// 1. BetterAuthProvider wala import hata dein kyunki ye exist nahi karta
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+// QueryClient instance create karein
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    },
+  },
+});
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      {/* 2. BetterAuthProvider wrapper ko yahan se delete karein */}
+      {children}
+    </QueryClientProvider>
+  );
+}
