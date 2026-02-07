@@ -36,7 +36,7 @@ export default function TaskCard({ task, onTaskUpdate, onTaskDelete }: TaskCardP
     if (!user) { toast.error('Session expired.'); router.push('/login'); return; }
     setIsLoading(true);
     try {
-      const response = await authApiClient.patch<Partial<Task>>(`/api/${user.id}/tasks/${localTask.id}/complete`, {});
+      const response = await authApiClient.patch<Partial<Task>>(`/api/${user.id}/tasks/${localTask.id}/toggle`, {});
       if (isErrorResponse(response)) { handleApiError(response.error); return; }
       const updatedTask = { ...localTask, completed: !localTask.completed };
       setLocalTask(updatedTask);
