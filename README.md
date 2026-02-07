@@ -184,6 +184,17 @@ WebSocket endpoint at `/ws/{user_id}` broadcasts task events to connected client
 - **Phase V Unit Tests**: 25 tests covering priorities, tags, search, recurrence, reminders, event schemas
 - Run: `cd backend && pytest tests/test_phase_v.py -v`
 
+## Documentation
+
+- [Cloud Deployment Guide](docs/cloud-deployment-guide.md) — OKE/AKS/GKE deployment instructions
+- [CI/CD Pipeline](docs/cicd-pipeline.md) — GitHub Actions workflow details
+- [Demo Assets](demo/README.md) — Screenshots and demo walkthrough
+- [Full Spec](specs/001-advanced-cloud-deployment/spec.md) — Complete Phase V specification
+
+## License
+
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+
 ## Next Steps / Future Ideas
 
 - Email/SMS notifications via Twilio or SendGrid Dapr binding
@@ -191,8 +202,9 @@ WebSocket endpoint at `/ws/{user_id}` broadcasts task events to connected client
 - Load testing with Locust
 - Multi-user task sharing
 
+---
 
-Made with ❤️ in Karachi, Pakistan
-Shumaila – February 2026
-Hackathon II – Evolution of Todo – Phase V Submission
+Made with love in Karachi, Pakistan
+Shumaila - February 2026
+Hackathon II - Evolution of Todo - Phase V Submission
 
