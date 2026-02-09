@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-backend
+  namespace: todo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todo-backend
+  template:
+    metadata:
+      labels:
+        app: todo-backend
+    spec:
+      imagePullSecrets:
+      - name: ocir-secret
+      containers:
+      - name: backend
+        image: bom.ocir.io/bmmpta9gsjks/todo-backend:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://neondb_owner:npg_uNWnlFw3LQ6m@ep-bitter-bush-a1u93b1p-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
+        - name: BETTER_AUTH_SECRET
+          value: "todo-app-secret-key-2024"
+        - name: OPENAI_API_KEY
+          value: "sk-placeholder"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-backend
+  namespace: todo-app
+spec:
+  type: ClusterIP
+  selector:
+    app: todo-backend
+  ports:
+  - port: 8000
+    targetPort: 8000

@@ -171,42 +171,76 @@ A developer wants dashboards showing system metrics, Kafka consumer lag, error r
 
 ## 4. Architecture Overview
 
-```
-                        ┌─────────────────────────────────────────────┐
-                        │            Cloud / Minikube K8s             │
-                        │                                             │
-  User ──► NGINX ──►    │  ┌──────────┐    ┌──────────┐              │
-           Ingress      │  │ Frontend │    │ Backend  │              │
-           (TLS)        │  │ (Next.js)│───►│ (FastAPI)│              │
-                        │  └──────────┘    └────┬─────┘              │
-                        │                       │ Dapr sidecar       │
-                        │                       │ localhost:3500     │
-                        │                  ┌────▼─────┐              │
-                        │                  │  Dapr    │              │
-                        │                  │ Pub/Sub  │              │
-                        │                  └────┬─────┘              │
-                        │                       │                    │
-                        │              ┌────────▼────────┐           │
-                        │              │  Kafka/Redpanda │           │
-                        │              │  (3 topics)     │           │
-                        │              └───┬────┬────┬───┘           │
-                        │                  │    │    │               │
-                        │         ┌────────┘    │    └────────┐      │
-                        │         ▼             ▼             ▼      │
-                        │  ┌───────────┐ ┌───────────┐ ┌──────────┐ │
-                        │  │ Recurring │ │Notification│ │  Audit   │ │
-                        │  │ Task Svc  │ │  Service   │ │  Logger  │ │
-                        │  └───────────┘ └───────────┘ └──────────┘ │
-                        │                                            │
-                        │  ┌──────────────────────────────────┐      │
-                        │  │ Monitoring: Prometheus + Grafana  │      │
-                        │  │             + Loki + Dapr Tracing │      │
-                        │  └──────────────────────────────────┘      │
-                        │                                            │
-                        │  ┌────────────────┐                        │
-                        │  │ Neon PostgreSQL │ (external, free tier)  │
-                        │  └────────────────┘                        │
-                        └────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph Internet
+        User([User / Browser])
+    end
+
+    subgraph K8s["Cloud / Minikube Kubernetes Cluster"]
+        Ingress[NGINX Ingress<br/>TLS Termination]
+
+        subgraph AppLayer["Application Layer"]
+            FE[Frontend<br/>Next.js]
+            BE[Backend<br/>FastAPI]
+            DaprBE{{Dapr Sidecar<br/>localhost:3500}}
+        end
+
+        subgraph EventLayer["Event-Driven Layer"]
+            Kafka[(Kafka / Redpanda<br/>3 Topics)]
+            RecurringSvc[Recurring Task<br/>Service]
+            NotifSvc[Notification<br/>Service]
+            AuditSvc[Audit Logger]
+            SyncSvc[Real-time<br/>Sync Service]
+        end
+
+        subgraph DaprBlocks["Dapr Building Blocks"]
+            PubSub[Pub/Sub<br/>pubsub.kafka]
+            State[State Store<br/>state.postgresql]
+            Cron[Cron Binding<br/>bindings.cron]
+            Secrets[Secret Store<br/>secretstores.kubernetes]
+        end
+
+        subgraph Monitoring["Observability"]
+            Prom[Prometheus]
+            Grafana[Grafana<br/>Dashboards]
+            Loki[Loki + Promtail<br/>Logs]
+        end
+    end
+
+    subgraph External["External Services"]
+        NeonDB[(Neon PostgreSQL<br/>Free Tier)]
+        GHCR[GitHub Container<br/>Registry]
+        GHA[GitHub Actions<br/>CI/CD Pipeline]
+    end
+
+    User --> Ingress
+    Ingress --> FE
+    FE --> BE
+    BE <--> DaprBE
+    DaprBE --> PubSub
+    DaprBE --> State
+    DaprBE --> Secrets
+    PubSub --> Kafka
+    Cron --> NotifSvc
+    Kafka --> RecurringSvc
+    Kafka --> NotifSvc
+    Kafka --> AuditSvc
+    Kafka --> SyncSvc
+    BE --> NeonDB
+    RecurringSvc --> NeonDB
+    NotifSvc --> NeonDB
+    AuditSvc --> NeonDB
+    Prom --> Grafana
+    GHA --> GHCR
+    GHA -.->|helm deploy| K8s
+
+    style K8s fill:#1a1a2e,color:#fff
+    style AppLayer fill:#16213e,color:#fff
+    style EventLayer fill:#0f3460,color:#fff
+    style DaprBlocks fill:#533483,color:#fff
+    style Monitoring fill:#1a1a2e,color:#fff
+    style External fill:#e94560,color:#fff
 ```
 
 ### Key Architectural Decisions
@@ -221,79 +255,465 @@ A developer wants dashboards showing system metrics, Kafka consumer lag, error r
 
 ## 5. Part A — Advanced & Intermediate Features
 
+### 5.0 Current Baseline (Phase III State)
+
+The existing `task` table and MCP tools serve as the starting point. Understanding what already exists prevents duplicate work.
+
+**Current `task` table columns:**
+
+| Column | Type | Nullable | Default | Notes |
+| ------ | ---- | -------- | ------- | ----- |
+| `id` | INTEGER | No | auto-increment | Primary key |
+| `title` | VARCHAR | No | — | min_length=1 |
+| `description` | TEXT | Yes | NULL | — |
+| `completed` | BOOLEAN | No | false | — |
+| `priority` | VARCHAR | No | "Medium" | Currently free-text ("Low"/"Medium"/"High") |
+| `due_date` | VARCHAR | Yes | NULL | Currently stored as string, not datetime |
+| `user_id` | INTEGER | No | — | FK → user.id |
+| `created_at` | DATETIME | No | utcnow | — |
+| `updated_at` | DATETIME | No | utcnow | — |
+
+**Current MCP tool parameters:**
+
+| Tool | Accepts | Notes |
+| ---- | ------- | ----- |
+| `add_task` | title, description, priority (Low/Medium/High), due_date (YYYY-MM-DD string) | No tags, no recurrence, no reminder |
+| `update_task` | title, description, priority, due_date, completed | Same gaps |
+| `list_tasks` | user_id only | No search, filter, sort, or pagination |
+| `complete_task` | task_id, user_id | No event emission |
+| `delete_task` | task_id, user_id | No event emission |
+
+---
+
 ### 5.1 Intermediate Features
 
-#### Priorities
+#### 5.1.1 Priorities (Upgrade from Phase III)
 
+Phase III already has a `priority` column with free-text values ("Low", "Medium", "High"). Phase V upgrades this to a formal 4-level enum.
+
+**Behavior:**
 - Four levels: **P1** (Critical), **P2** (High), **P3** (Medium), **P4** (Low)
-- Default priority: P3 (Medium) when not specified
-- **DB change**: Add `priority` column (string enum, nullable, default "P3") to tasks table
-- **MCP tool change**: `add_task` and `update_task` accept optional `priority` parameter
-- **UI impact**: Priority badge on task cards; filter dropdown; sort option
+- Default: P3 (Medium) when not specified
+- Backward compatibility: existing "Low"/"Medium"/"High" values are migrated to P4/P3/P2
 
-#### Tags
+**DB Schema Change (Alembic migration 004):**
 
-- Free-form text tags, stored as a separate entity with many-to-many relationship to tasks
-- Maximum 10 tags per task; tag names max 50 characters, lowercase normalized
-- **DB change**: New `tags` table + `task_tags` junction table, both with `user_id` for isolation
-- **MCP tool change**: `add_task` accepts `tags` array; new `list_tags` tool; `list_tasks` accepts `tag` filter
-- **UI impact**: Tag chips on task cards; tag filter sidebar; tag auto-complete in chat
+| Action | Column | Type | Nullable | Default | Constraint |
+| ------ | ------ | ---- | -------- | ------- | ---------- |
+| ALTER | `priority` | VARCHAR(2) | No | "P3" | CHECK IN ('P1','P2','P3','P4') |
 
-#### Search
+```sql
+-- Migration: convert existing values
+UPDATE task SET priority = CASE
+    WHEN priority = 'High'   THEN 'P2'
+    WHEN priority = 'Medium' THEN 'P3'
+    WHEN priority = 'Low'    THEN 'P4'
+    ELSE 'P3'
+END;
 
-- Full-text search across task title and description
-- Case-insensitive, partial match support
-- **DB change**: PostgreSQL `to_tsvector`/`to_tsquery` full-text search index on title + description
-- **MCP tool change**: `list_tasks` accepts `search` parameter
-- **UI impact**: Search bar in task list; highlighted matches
+-- Add check constraint
+ALTER TABLE task ADD CONSTRAINT ck_task_priority
+    CHECK (priority IN ('P1', 'P2', 'P3', 'P4'));
+```
 
-#### Filter
+**Downgrade:** reverse the CASE mapping (P1→"High", P2→"High", P3→"Medium", P4→"Low"); drop constraint.
 
-- Filter by: status (complete/incomplete), priority, tag, due date range, has reminders
-- Multiple filters combinable (AND logic)
-- **DB change**: No additional schema changes; query composition in CRUD layer
-- **MCP tool change**: `list_tasks` accepts `filters` object with all filterable fields
-- **UI impact**: Filter panel with dropdowns and toggles
+**MCP Tool Changes:**
+- `add_task`: `priority` parameter accepts "P1"/"P2"/"P3"/"P4" (replaces "Low"/"Medium"/"High")
+- `update_task`: same change
+- `list_tasks`: new `priority` filter parameter
 
-#### Sort
+**Validation:** reject any value not in `{P1, P2, P3, P4}` with error code `invalid_priority`
 
-- Sort by: created date, updated date, due date, priority, title (alphabetical)
-- Default: created date descending
-- **DB change**: No additional schema changes; ORDER BY in queries
-- **MCP tool change**: `list_tasks` accepts `sort_by` and `sort_order` parameters
-- **UI impact**: Sort dropdown in task list header
+**UI Impact:** Priority badge with color coding (P1=red, P2=orange, P3=blue, P4=gray); filter dropdown; sort option
+
+**Event:** `task.created` and `task.updated` events include `priority` field
+
+---
+
+#### 5.1.2 Tags (New Entity)
+
+**Behavior:**
+- Free-form text tags, many-to-many relationship with tasks
+- Maximum 10 tags per task; tag name max 50 characters, lowercase-normalized, trimmed
+- Tags are per-user (user A's "work" tag is independent of user B's "work" tag)
+- Duplicate tag names per user are prevented (unique constraint)
+
+**DB Schema Change (Alembic migration 005):**
+
+**New `tag` table:**
+
+| Column | Type | Nullable | Default | Constraint |
+| ------ | ---- | -------- | ------- | ---------- |
+| `id` | INTEGER | No | auto-increment | Primary key |
+| `name` | VARCHAR(50) | No | — | Lowercase normalized |
+| `user_id` | INTEGER | No | — | FK → user.id, ON DELETE CASCADE |
+| `created_at` | DATETIME | No | utcnow | — |
+
+**Indexes:** `UNIQUE(user_id, name)` — prevents duplicate tags per user
+**Index:** `ix_tag_user_id` on `user_id` for fast lookups
+
+**New `task_tag` junction table:**
+
+| Column | Type | Nullable | Constraint |
+| ------ | ---- | -------- | ---------- |
+| `task_id` | INTEGER | No | FK → task.id, ON DELETE CASCADE |
+| `tag_id` | INTEGER | No | FK → tag.id, ON DELETE CASCADE |
+
+**Indexes:** `PRIMARY KEY(task_id, tag_id)` — composite PK prevents duplicate associations
+**Index:** `ix_task_tag_tag_id` on `tag_id` for reverse lookups
+
+```sql
+-- Migration 005
+CREATE TABLE tag (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    created_at TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX ix_tag_user_name ON tag(user_id, name);
+
+CREATE TABLE task_tag (
+    task_id INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, tag_id)
+);
+```
+
+**Downgrade:** `DROP TABLE task_tag; DROP TABLE tag;`
+
+**MCP Tool Changes:**
+- `add_task`: new optional `tags` parameter (array of strings, max 10). Tags are auto-created if they don't exist for the user.
+- `update_task`: new optional `tags` parameter (replaces all tags on the task)
+- `list_tasks`: new optional `tag` filter parameter (string, filters tasks having that tag)
+- New tool `list_tags`: returns all tags for the user with task counts
+
+**Validation:**
+- Tag name: 1-50 characters, stripped, lowercased; reject empty or whitespace-only
+- Max 10 tags per task; reject with error code `too_many_tags` if exceeded
+- Tag name uniqueness enforced per-user at DB level
+
+**UI Impact:** Tag chips on task cards; tag filter sidebar; tag auto-complete in chat input
+
+**Event:** `task.created` and `task.updated` events include `tags` array in event data
+
+---
+
+#### 5.1.3 Search
+
+**Behavior:**
+- Full-text search across task `title` and `description`
+- Case-insensitive, supports partial word matching
+- Only searches within the authenticated user's tasks
+
+**DB Schema Change (Alembic migration 006):**
+
+| Action | Target | Type | Notes |
+| ------ | ------ | ---- | ----- |
+| ADD COLUMN | `search_vector` | TSVECTOR | Generated from title + description |
+| CREATE INDEX | `ix_task_search` | GIN | On `search_vector` for fast full-text search |
+| CREATE TRIGGER | `task_search_update` | — | Auto-updates `search_vector` on INSERT/UPDATE |
+
+```sql
+-- Migration 006
+ALTER TABLE task ADD COLUMN search_vector TSVECTOR;
+
+UPDATE task SET search_vector =
+    to_tsvector('english', coalesce(title, '') || ' ' || coalesce(description, ''));
+
+CREATE INDEX ix_task_search ON task USING GIN(search_vector);
+
+CREATE TRIGGER task_search_update
+    BEFORE INSERT OR UPDATE OF title, description ON task
+    FOR EACH ROW EXECUTE FUNCTION
+    tsvector_update_trigger(search_vector, 'pg_catalog.english', title, description);
+```
+
+**Downgrade:** `DROP TRIGGER task_search_update; DROP INDEX ix_task_search; ALTER TABLE task DROP COLUMN search_vector;`
+
+**MCP Tool Changes:**
+- `list_tasks`: new optional `search` parameter (string). Searches using `plainto_tsquery` for safety (no SQL injection via raw tsquery syntax).
+
+**Validation:** Search query max 200 characters; empty string returns all tasks (no filter applied)
+
+**UI Impact:** Search bar in task list header; matching terms highlighted in results
+
+---
+
+#### 5.1.4 Filter
+
+**Behavior:**
+- Filter tasks by any combination of: `completed` (bool), `priority` (P1-P4), `tag` (string), `due_before` (date), `due_after` (date), `has_reminder` (bool), `is_overdue` (bool)
+- Multiple filters combine with AND logic
+- Only applied within the authenticated user's tasks
+
+**DB Schema Change:** None — filtering is query composition in the CRUD layer. Existing columns + tag join + due_date comparison are sufficient.
+
+**MCP Tool Changes:**
+- `list_tasks` gains these optional parameters:
+
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `completed` | bool | Filter by completion status |
+| `priority` | string | Filter by priority level (P1-P4) |
+| `tag` | string | Filter by tag name (exact match, lowercase) |
+| `due_before` | string (YYYY-MM-DD) | Tasks due before this date |
+| `due_after` | string (YYYY-MM-DD) | Tasks due after this date |
+| `has_reminder` | bool | Tasks with active reminders |
+| `is_overdue` | bool | Tasks past due date and not completed |
+
+**Validation:** Date parameters validated as YYYY-MM-DD; `due_before` must be >= `due_after` if both provided; priority validated against P1-P4 enum
+
+**UI Impact:** Filter panel with dropdowns and toggles; active filter count badge
+
+---
+
+#### 5.1.5 Sort & Pagination
+
+**Behavior:**
+- Sort by: `created_at`, `updated_at`, `due_date`, `priority`, `title`
+- Sort order: `asc` or `desc` (default: `created_at desc`)
+- Priority sort order: P1 > P2 > P3 > P4 (ascending = most critical first)
+- Tasks with NULL `due_date` appear last when sorting by due date
+- Pagination: offset-based with `page` and `page_size` parameters
+
+**DB Schema Change:** None — sorting and pagination are query modifiers.
+
+**MCP Tool Changes:**
+- `list_tasks` gains these optional parameters:
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `sort_by` | string | "created_at" | Column to sort by |
+| `sort_order` | string | "desc" | "asc" or "desc" |
+| `page` | integer | 1 | Page number (1-indexed) |
+| `page_size` | integer | 10 | Results per page (1-100) |
+
+- Response includes: `total_count`, `page`, `page_size`, `total_pages` alongside the task list
+
+**Validation:**
+- `sort_by` must be one of: `created_at`, `updated_at`, `due_date`, `priority`, `title`
+- `sort_order` must be `asc` or `desc`
+- `page` must be >= 1; `page_size` must be 1-100
+
+**UI Impact:** Sort dropdown in task list header; page navigation controls
+
+---
 
 ### 5.2 Advanced Features
 
-#### Due Dates
+#### 5.2.1 Due Dates (Upgrade from Phase III)
 
-- ISO 8601 date format (YYYY-MM-DD), stored as UTC
-- Optional timezone parameter for display conversion
-- Overdue detection: tasks past due date flagged automatically
-- **DB change**: Add `due_date` column (datetime, nullable) to tasks table
-- **MCP tool change**: `add_task` and `update_task` accept `due_date`; `list_tasks` supports `due_before`/`due_after` filters
-- **Event**: `task.created` and `task.updated` events include `due_date` field
+Phase III already has `due_date` as an optional VARCHAR string. Phase V upgrades to proper TIMESTAMP WITH TIME ZONE for correct UTC handling and range queries.
 
-#### Recurring Tasks
+**Behavior:**
+- ISO 8601 datetime format, stored as UTC in the database
+- Optional timezone parameter for display conversion (frontend concern)
+- Overdue detection: tasks with `due_date < now()` and `completed = false` are flagged
 
-- Supported intervals: `daily`, `weekly`, `monthly`, cron expressions
-- When a recurring task is completed, a `task.completed` event triggers the Recurring Task Service to create the next occurrence
-- The new task inherits title, description, priority, tags, and recurrence rule from the parent
-- `due_date` is advanced by the recurrence interval
-- Maximum chain depth: 1000 (tracked via `recurrence_parent_id`)
-- **DB change**: Add `recurrence_rule` (string, nullable), `recurrence_parent_id` (FK to tasks, nullable) to tasks table
-- **MCP tool change**: `add_task` accepts `recurrence_rule`; new `list_recurring_tasks` tool
-- **Event**: `task.completed` → Recurring Task Service → `task.created` (new occurrence)
+**DB Schema Change (Alembic migration 007):**
 
-#### Reminders
+| Action | Column | Old Type | New Type | Notes |
+| ------ | ------ | -------- | -------- | ----- |
+| ALTER | `due_date` | VARCHAR | TIMESTAMP WITH TIME ZONE | Nullable, existing strings converted |
 
-- Configurable reminder lead time in minutes (default: 60 minutes before due date)
-- Dapr cron binding checks for due reminders every minute
-- Reminder is sent once; `reminder_sent` flag prevents duplicates
-- Only tasks with `due_date` set and `completed=false` can have active reminders
-- **DB change**: Add `reminder_minutes` (integer, nullable, default 60), `reminder_sent` (boolean, default false) to tasks table
-- **MCP tool change**: `add_task` accepts `reminder_minutes`; `update_task` can modify reminder settings
-- **Event**: Cron binding → Notification Service checks due reminders → publishes to `reminders` topic → marks `reminder_sent=true`
+```sql
+-- Migration 007: convert due_date from VARCHAR to TIMESTAMPTZ
+ALTER TABLE task
+    ALTER COLUMN due_date TYPE TIMESTAMP WITH TIME ZONE
+    USING CASE
+        WHEN due_date IS NOT NULL AND due_date ~ '^\d{4}-\d{2}-\d{2}$'
+        THEN (due_date || 'T00:00:00Z')::TIMESTAMPTZ
+        ELSE NULL
+    END;
+
+-- Index for range queries
+CREATE INDEX ix_task_due_date ON task(due_date) WHERE due_date IS NOT NULL;
+```
+
+**Downgrade:** `ALTER TABLE task ALTER COLUMN due_date TYPE VARCHAR USING to_char(due_date, 'YYYY-MM-DD'); DROP INDEX ix_task_due_date;`
+
+**MCP Tool Changes:**
+- `add_task` and `update_task`: `due_date` parameter now accepts ISO 8601 datetime strings (e.g., "2026-02-10T14:00:00Z" or "2026-02-10")
+- `list_tasks`: new `due_before`/`due_after` filter parameters (covered in 5.1.4)
+- Response includes `is_overdue: bool` computed field
+
+**Validation:** Must be valid ISO 8601; dates in the past are allowed (for backdating) but emit a warning in the chatbot response
+
+**Event:** `task.created` and `task.updated` events include `due_date` as ISO 8601 UTC string
+
+---
+
+#### 5.2.2 Recurring Tasks (New Feature)
+
+**Behavior:**
+- Supported recurrence rules: `daily`, `weekly`, `monthly`, or a valid cron expression (e.g., `0 9 * * 1-5` for weekdays at 9am)
+- When a recurring task is **completed**, a `task.completed` event triggers the **Recurring Task Service** consumer to create the next occurrence
+- The new task inherits: title, description, priority, tags, recurrence_rule, reminder_minutes
+- The new task's `due_date` is advanced by the recurrence interval from the **current** due_date (not from now)
+- If the parent has no `due_date`, the next occurrence's due_date is calculated from `now()` + interval
+- Chain depth tracked via `recurrence_parent_id` → maximum 1000 to prevent infinite loops
+- Deleting a recurring task stops the chain — no further occurrences are created
+
+**DB Schema Change (Alembic migration 008):**
+
+| Action | Column | Type | Nullable | Default | Constraint |
+| ------ | ------ | ---- | -------- | ------- | ---------- |
+| ADD | `recurrence_rule` | VARCHAR(100) | Yes | NULL | — |
+| ADD | `recurrence_parent_id` | INTEGER | Yes | NULL | FK → task.id, ON DELETE SET NULL |
+| ADD | `recurrence_depth` | INTEGER | No | 0 | CHECK >= 0 AND <= 1000 |
+
+```sql
+-- Migration 008
+ALTER TABLE task ADD COLUMN recurrence_rule VARCHAR(100);
+ALTER TABLE task ADD COLUMN recurrence_parent_id INTEGER
+    REFERENCES task(id) ON DELETE SET NULL;
+ALTER TABLE task ADD COLUMN recurrence_depth INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE task ADD CONSTRAINT ck_task_recurrence_depth
+    CHECK (recurrence_depth >= 0 AND recurrence_depth <= 1000);
+
+CREATE INDEX ix_task_recurrence_parent ON task(recurrence_parent_id)
+    WHERE recurrence_parent_id IS NOT NULL;
+```
+
+**Downgrade:** Drop constraint, drop index, drop columns.
+
+**Recurrence Rule Validation:**
+- `daily` → +1 day
+- `weekly` → +7 days
+- `monthly` → +1 month (calendar-aware: Jan 31 → Feb 28)
+- Cron expression → validated with standard 5-field cron parser; next occurrence computed from cron schedule
+- Any other string → rejected with error code `invalid_recurrence_rule`
+
+**MCP Tool Changes:**
+- `add_task`: new optional `recurrence_rule` parameter (string)
+- `update_task`: can modify `recurrence_rule` (set to null to stop recurrence)
+- New tool `list_recurring_tasks`: returns only tasks with `recurrence_rule IS NOT NULL` for the user
+
+**Event Chain:**
+
+```
+User completes task (recurrence_rule="weekly", due_date="2026-02-10")
+    → DB commit
+    → Emit task.completed event to task-events topic
+    → Recurring Task Service consumes event
+    → Checks: recurrence_rule is set? depth < 1000?
+    → Creates new task: due_date="2026-02-17", recurrence_depth=parent.depth+1
+    → DB commit
+    → Emit task.created event
+```
+
+**Safety Guards:**
+- `recurrence_depth` >= 1000 → log warning, do NOT create next occurrence, notify user
+- `recurrence_parent_id` ON DELETE SET NULL → deleting parent does not cascade-delete children, but breaks the chain
+
+---
+
+#### 5.2.3 Reminders (New Feature)
+
+**Behavior:**
+- Users set a reminder lead time in minutes (default: 60 minutes before due date)
+- A Dapr cron binding runs every minute, triggering the backend to check for due reminders
+- The backend queries: `WHERE due_date - interval '{reminder_minutes} minutes' <= now() AND reminder_sent = false AND completed = false`
+- Matching tasks are published to the `reminders` topic
+- The **Notification Service** consumer sends the reminder and sets `reminder_sent = true`
+- Each reminder is sent **exactly once** per task (idempotent via `reminder_sent` flag + `event_id` tracking)
+
+**DB Schema Change (Alembic migration 009):**
+
+| Action | Column | Type | Nullable | Default | Notes |
+| ------ | ------ | ---- | -------- | ------- | ----- |
+| ADD | `reminder_minutes` | INTEGER | Yes | NULL | NULL = no reminder; 0 = at due time |
+| ADD | `reminder_sent` | BOOLEAN | No | false | Reset to false if due_date changes |
+
+```sql
+-- Migration 009
+ALTER TABLE task ADD COLUMN reminder_minutes INTEGER;
+ALTER TABLE task ADD COLUMN reminder_sent BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE task ADD CONSTRAINT ck_task_reminder_minutes
+    CHECK (reminder_minutes IS NULL OR reminder_minutes >= 0);
+
+-- Index for the reminder cron query
+CREATE INDEX ix_task_reminder_pending ON task(due_date)
+    WHERE reminder_sent = false
+    AND reminder_minutes IS NOT NULL
+    AND completed = false;
+```
+
+**Downgrade:** Drop constraint, drop index, drop columns.
+
+**MCP Tool Changes:**
+- `add_task`: new optional `reminder_minutes` parameter (integer, >= 0)
+- `update_task`: can modify `reminder_minutes`; updating `due_date` automatically resets `reminder_sent` to false
+
+**Validation:**
+- `reminder_minutes` must be >= 0 if provided; NULL means no reminder
+- Setting `reminder_minutes` without `due_date` returns warning: "Reminder set but no due date — reminder won't fire until a due date is added"
+- Max value: 10080 (7 days in minutes)
+
+**Event Flow:**
+
+```
+Dapr cron binding fires every 1 minute
+    → Backend /api/internal/check-reminders endpoint
+    → Query: tasks WHERE due_date - reminder_minutes <= now()
+             AND reminder_sent = false AND completed = false
+    → For each match: publish ReminderEvent to reminders topic
+    → Notification Service consumes event
+    → Checks event_id for idempotency (skip if already processed)
+    → Sends notification to user
+    → Sets reminder_sent = true via DB update
+```
+
+**Edge Cases:**
+- Task completed before reminder fires → reminder is skipped (query includes `completed = false`)
+- Due date changed after reminder sent → `reminder_sent` reset to false, new reminder will fire
+- Multiple reminders on same task from race condition → `event_id` idempotency check in consumer prevents duplicates
+
+---
+
+### 5.3 Complete DB Schema After All Migrations
+
+**Final `task` table (after migrations 004-009):**
+
+| Column | Type | Nullable | Default | Constraint | Migration |
+| ------ | ---- | -------- | ------- | ---------- | --------- |
+| `id` | SERIAL | No | auto | PK | existing |
+| `title` | VARCHAR | No | — | min 1 char | existing |
+| `description` | TEXT | Yes | NULL | — | existing |
+| `completed` | BOOLEAN | No | false | — | existing |
+| `priority` | VARCHAR(2) | No | "P3" | CHECK P1-P4 | 004 |
+| `due_date` | TIMESTAMPTZ | Yes | NULL | — | 007 |
+| `user_id` | INTEGER | No | — | FK → user.id | existing |
+| `created_at` | TIMESTAMPTZ | No | now() | — | existing |
+| `updated_at` | TIMESTAMPTZ | No | now() | — | existing |
+| `search_vector` | TSVECTOR | Yes | auto-trigger | GIN index | 006 |
+| `recurrence_rule` | VARCHAR(100) | Yes | NULL | — | 008 |
+| `recurrence_parent_id` | INTEGER | Yes | NULL | FK → task.id, SET NULL | 008 |
+| `recurrence_depth` | INTEGER | No | 0 | CHECK 0-1000 | 008 |
+| `reminder_minutes` | INTEGER | Yes | NULL | CHECK >= 0 | 009 |
+| `reminder_sent` | BOOLEAN | No | false | — | 009 |
+
+**New `tag` table (migration 005):**
+
+| Column | Type | Nullable | Default | Constraint |
+| ------ | ---- | -------- | ------- | ---------- |
+| `id` | SERIAL | No | auto | PK |
+| `name` | VARCHAR(50) | No | — | UNIQUE(user_id, name) |
+| `user_id` | INTEGER | No | — | FK → user.id, CASCADE |
+| `created_at` | TIMESTAMPTZ | No | now() | — |
+
+**New `task_tag` junction table (migration 005):**
+
+| Column | Type | Constraint |
+| ------ | ---- | ---------- |
+| `task_id` | INTEGER | FK → task.id, CASCADE |
+| `tag_id` | INTEGER | FK → tag.id, CASCADE |
+| — | — | PK(task_id, tag_id) |
+
+**Migration Execution Order:** 004 (priority enum) → 005 (tags) → 006 (search vector) → 007 (due_date type) → 008 (recurrence) → 009 (reminders)
 
 ---
 
@@ -539,29 +959,15 @@ push to main → lint-and-test (2-3m) → build-and-push (3-5m) → deploy (3-5m
 
 ## 12. Assumptions & Risks
 
-### Assumptions
+**Key Assumptions:** OKE always-free tier provides 4 OCPUs/24GB; Redpanda Cloud free tier handles <10K events/day; Phase III/IV codebase is stable; Dapr v1.13+ works on Minikube and OKE; WSL2 can allocate 6GB+ RAM.
 
-1. Oracle OKE always-free tier remains available and provides sufficient resources (4 OCPUs, 24GB RAM) for the full stack
-2. Redpanda Cloud Serverless free tier supports the expected event volume (< 10,000 events/day) without throttling
-3. Neon PostgreSQL free tier handles the combined load of CRUD operations, full-text search, and state management
-4. The existing Phase III/IV codebase (FastAPI, Next.js, Helm charts) is stable and can be extended without major refactoring
-5. Dapr v1.13+ is stable on both Minikube and OKE and supports all required building blocks
-6. GitHub Actions free tier provides sufficient CI/CD minutes for the pipeline
-7. Users have a modern browser with JavaScript enabled for the chat interface
-8. WSL2 + Docker Desktop environment can allocate at least 6GB RAM for Minikube
-
-### Risks
-
-| Risk | Likelihood | Impact | Mitigation |
-| ---- | ---------- | ------ | ---------- |
-| Oracle OKE free tier quota exceeded or unavailable | Low | High | Fallback to Azure AKS ($200 credits) or GKE ($300 credits) |
-| Redpanda Cloud Serverless rate-limited on free tier | Medium | Medium | Fallback to Strimzi self-hosted Kafka on K8s |
-| Dapr sidecar injection fails on cloud cluster | Medium | High | `USE_DAPR=false` toggle; direct aiokafka fallback |
-| Kafka consumer lag causes delayed reminders | Medium | Medium | Monitor lag via Grafana alert; scale consumers with HPA |
-| Full-text search performance degrades with large datasets | Low | Medium | PostgreSQL GIN index; pagination limits; query optimization |
-| GitHub Actions minutes exhausted | Low | Low | Local `deploy-local.sh` script as fallback; optimize pipeline caching |
-| Recurring task infinite loop despite depth check | Very Low | Critical | Hard limit at 1000; circuit breaker pattern; monitoring alert |
-| Secrets accidentally committed to git | Low | Critical | `.gitignore` for `.env`; pre-commit hook; GitHub secret scanning |
+| Risk | Impact | Mitigation |
+| ---- | ------ | ---------- |
+| OKE free tier unavailable | High | Fallback: AKS ($200) or GKE ($300) |
+| Redpanda rate-limited | Medium | Fallback: Strimzi self-hosted on K8s |
+| Dapr sidecar injection fails | High | `USE_DAPR=false` → direct aiokafka |
+| Recurring task infinite loop | Critical | `recurrence_depth` hard cap at 1000 |
+| Secrets leaked to git | Critical | Dapr secrets; `.gitignore`; pre-commit hook |
 
 ---
 

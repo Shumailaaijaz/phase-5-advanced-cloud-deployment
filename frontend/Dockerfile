@@ -11,7 +11,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build-time env var for API URL (required for NEXT_PUBLIC_* to be embedded)
-ARG NEXT_PUBLIC_API_URL=http://todo-backend:8000
+ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 RUN npm run build

@@ -3,6 +3,7 @@
 
 global:
   namespace: todo-app
+  imagePullSecrets: []
 
 frontend:
   replicaCount: 1

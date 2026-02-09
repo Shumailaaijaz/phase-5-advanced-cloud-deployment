@@ -41,3 +41,10 @@ Thumbs.db
 *.swo
 *~
 .pydevproject
+
+# Large binaries
+minikube-linux-amd64
+rpk-linux-amd64.zip
+*.zip
+*.tar.gzminikube-linux-amd64 
+minikube-linux-amd64

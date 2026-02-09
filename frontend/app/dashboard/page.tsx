@@ -48,7 +48,7 @@ export default function Dashboard() {
     if (filter === "Pending") params.set("completed", "false");
     if (filter === "Completed") params.set("completed", "true");
 
-    const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/${userId}/tasks?${params.toString()}`;
+    const url = `/api/${userId}/tasks?${params.toString()}`;
     const res = await fetch(url, {
       headers: { "Authorization": `Bearer ${token}` }
     });
@@ -85,7 +85,7 @@ export default function Dashboard() {
     if (recurrenceRule) body.recurrence_rule = recurrenceRule;
     if (reminderMinutes) body.reminder_minutes = parseInt(reminderMinutes);
 
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/${userId}/tasks`, {
+    const res = await fetch(`/api/${userId}/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify(body)
@@ -100,7 +100,7 @@ export default function Dashboard() {
 
   const handleDelete = async (taskId: string | number) => {
     const token = localStorage.getItem("token");
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/${userId}/tasks/${taskId}`, {
+    const res = await fetch(`/api/${userId}/tasks/${taskId}`, {
       method: "DELETE",
       headers: { "Authorization": `Bearer ${token}` }
     });
@@ -109,7 +109,7 @@ export default function Dashboard() {
 
   const handleToggle = async (taskId: string | number) => {
     const token = localStorage.getItem("token");
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/${userId}/tasks/${taskId}/toggle`, {
+    const res = await fetch(`/api/${userId}/tasks/${taskId}/toggle`, {
       method: "PATCH",
       headers: { "Authorization": `Bearer ${token}` }
     });
@@ -120,7 +120,7 @@ export default function Dashboard() {
     const newTitle = prompt("Edit your task title:", currentTitle);
     if (newTitle === null || newTitle.trim() === "" || newTitle === currentTitle) return;
     const token = localStorage.getItem("token");
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/${userId}/tasks/${taskId}`, {
+    const res = await fetch(`/api/${userId}/tasks/${taskId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ title: newTitle.trim() })
@@ -165,7 +165,11 @@ export default function Dashboard() {
                   className="object-contain rounded-xl"
                 />
               </div>
-              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Today&apos;s Mission</h1>
+              <div className="overflow-hidden">
+                <h1 className="text-4xl font-extrabold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 bg-clip-text text-transparent animate-pulse tracking-tight whitespace-nowrap">
+                  Today&apos;s Mission
+                </h1>
+              </div>
             </div>
           </div>
 

@@ -2,7 +2,7 @@ import { ErrorResponse, handleFetchError, parseApiResponse } from './error-handl
 import { authClient } from "./auth-client";
 
 // Backend API ka URL
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 /**
  * Common API Client - Bina authentication waali requests ke liye

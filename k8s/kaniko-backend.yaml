@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: build-backend
+  namespace: todo-app
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+      - name: kaniko
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+        - "--context=git://github.com/Shumailaaijaz/phase-5-advanced-cloud-deployment.git#refs/heads/main"
+        - "--context-sub-path=backend"
+        - "--dockerfile=Dockerfile"
+        - "--destination=bom.ocir.io/bmmpta9gsjks/todo-backend:latest"
+        - "--push-retry=3"
+        volumeMounts:
+        - name: docker-config
+          mountPath: /kaniko/.docker
+      restartPolicy: Never
+      volumes:
+      - name: docker-config
+        secret:
+          secretName: kaniko-secret
+          items:
+          - key: config.json
+            path: config.json

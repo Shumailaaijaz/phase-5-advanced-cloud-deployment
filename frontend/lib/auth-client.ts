@@ -2,7 +2,7 @@ import { createAuthClient } from "better-auth/react";
 
 export const authClient = createAuthClient({
     // Aapka backend URL
-   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+   baseURL: process.env.NEXT_PUBLIC_API_URL || ""
 });
 
 // Ye hooks hum components mein use karenge
